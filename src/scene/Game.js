@@ -16,14 +16,29 @@ class Game extends Phaser.Scene
 
        ball.body.setVelocity(-200,0)
 
-       const paddleleft = this.add.rectangle(20,250,20,50,0xffffff)
-       this.physics.add.existing(paddleleft,true)       
+       this.paddleleft = this.add.rectangle(20,250,20,50,0xffffff)
+       this.physics.add.existing(this.paddleleft,true)       
 
 
-       this.physics.add.collider(paddleleft,ball)
+       this.physics.add.collider(this.paddleleft,ball)
 
+       this.cursors =this.input.keyboard.createCursorKeys()
 
-       
+    }
+    update()
+    {
+        const body=this.paddleleft.body
+
+        if(this.cursors.up.isDown)
+            {
+                this.paddleleft.y -=1
+                body.updateFromGameObject()
+            }
+        else if(this.cursors.down.isDown)
+            {
+                this.paddleleft.y +=1
+                body.updateFromGameObject()
+            }
     }
 }
 
