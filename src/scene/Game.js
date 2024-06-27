@@ -1,11 +1,26 @@
 import Phaser from "phaser";
 
+import { GameBackground,GameOver } from "../const/sk";
+
+import { PressStart2P } from "../const/font";
+const GameState = {
+	Running: 'running',
+	PlayerWon: 'player-won',
+	AIWon: 'ai-won'
+}
+
 class Game extends Phaser.Scene
 {
     init()
     {
-        this.ls=0
-        this.rs=0
+        this.gameState = GameState.Running
+
+		this.paddlerightVelocity = new Phaser.Math.Vector2(0, 0)
+
+		this.leftScore = 0
+		this.rightScore = 0
+
+		this.paused = false
     }
     preload()
     {
@@ -13,86 +28,192 @@ class Game extends Phaser.Scene
     }
     create()
     {
+        this.scene.run(GameBackground)
+		this.scene.sendToBack(GameBackground)
+        
         this.physics.world.setBounds(-100,0,1000,500)
 
        this.ball= this.add.circle(400,250,10,0xffffff,1)
        this.physics.add.existing(this.ball)
-       this.ball.body.setBounce(1,1)
+       this.ball.body.setCircle(10)
+		this.ball.body.setBounce(1, 1)
+		this.ball.body.setMaxSpeed(400)
 
        this.ball.body.setCollideWorldBounds(true,1,1)
+       this.ball.body.onWorldBounds = true
 
-       const angle= Phaser.Math.Between(0,360)
-       const vec=this.physics.velocityFromAngle(angle,200)
-
-       this.ball.body.setVelocity(vec.x,vec.y)
-
+       
        this.paddleleft = this.add.rectangle(10,250,15,60,0xffffff)
        this.physics.add.existing(this.paddleleft,true)
        
        this.paddleright = this.add.rectangle(790,250,15,60,0xffffff)
        this.physics.add.existing(this.paddleright,true)
-       
 
+       this.physics.add.collider(this.paddleleft, this.ball, this.handlePaddleBallCollision, undefined, this)
+	   this.physics.add.collider(this.paddleright, this.ball, this.handlePaddleBallCollision, undefined, this)
 
-       this.physics.add.collider(this.paddleleft,this.ball)
-       this.physics.add.collider(this.paddleright,this.ball)
+       this.physics.world.on('worldbounds', this.handleBallWorldBoundsCollision, this)
 
       this.leftscore= this.add.text(100,25,'0',{fontSize:48}).setOrigin(.5,.5)
       this.rightscore= this.add.text(700,25,'0',{fontSize:48}).setOrigin(.5,.5)
 
 
        this.cursors =this.input.keyboard.createCursorKeys()
+       this.time.delayedCall(1500, () => {this.resetBall()})
 
     }
     update()
     {
-        const body=this.paddleleft.body
-        const body1=this.paddleright.body
-
-        if(this.cursors.up.isDown)
+        if (this.paused || this.gameState !== GameState.Running)
             {
-                this.paddleleft.y -=1
-                body.updateFromGameObject()
-            }
-        else if(this.cursors.down.isDown)
-            {
-                this.paddleleft.y +=1
-                body.updateFromGameObject()
+                return
             }
 
-        const diff= this.ball.y - this.paddleright.y
-
-        if(diff<0)
-            {
-                this.paddleright.y-=10
-                this.updateFromGameObject
-            }
-        else if (diff>0)
-            {
-                this.paddleright.y+=10
-                this.updateFromGameObject
-            }
-
-
-        if(this.ball.x<-30)
-            {
-                this.resetball()
-            }
-        else if(this.ball.x>830)
-            {
-                this.resetball()
-            }            
+            this.processPlayerInput()
+		    this.updateAI()
+		    this.checkScore()
     }
-    resetball()
-    {
-        this.ball.setPosition(400,250)
 
+    handleBallWorldBoundsCollision(body, up, down, left, right)
+	{
+		if (left || right)
+		{
+			return
+		}
+	}
 
-        const angle= Phaser.Math.Between(0,360)
-       const vec=this.physics.velocityFromAngle(angle,200)
+    handlePaddleBallCollision(paddle, ball)
+	{
 
-       this.ball.body.setVelocity(vec.x,vec.y)
-    }
+		/** @type {Phaser.Physics.Arcade.Body} */
+		const body = this.ball.body
+		const vel = body.velocity
+		vel.x *= 1.05
+		vel.y *= 1.05
+
+		body.setVelocity(vel.x, vel.y)
+	}
+
+    processPlayerInput()
+	{
+		/** @type {Phaser.Physics.Arcade.StaticBody} */
+		const body = this.paddleleft.body
+
+		if (this.cursors.up.isDown)
+		{
+			this.paddleleft.y -= 10
+			body.updateFromGameObject()
+		}
+		else if (this.cursors.down.isDown)
+		{
+			this.paddleleft.y += 10
+			body.updateFromGameObject()
+		}
+	}
+
+    updateAI()
+	{
+		const diff = this.ball.y - this.paddleright.y
+		if (Math.abs(diff) < 10)
+		{
+			return
+		}
+
+		const aiSpeed = 3
+		if (diff < 0)
+		{
+			// ball is above the paddle
+			this.paddlerightVelocity.y = -aiSpeed
+			if (this.paddlerightVelocity.y < -10)
+			{
+				this.paddlerightVelocity.y = -10
+			}
+		}
+		else if (diff > 0)
+		{
+			// ball is below the paddle
+			this.paddlerightVelocity.y = aiSpeed
+			if (this.paddlerightVelocity.y > 10)
+			{
+				this.paddlerightVelocity.y = 10
+			}
+		}
+
+		this.paddleright.y += this.paddlerightVelocity.y
+		this.paddleright.body.updateFromGameObject()
+	}
+
+    checkScore()
+	{
+		const x = this.ball.x
+		const leftBounds = -30
+		const rightBounds = 830
+		if (x >= leftBounds && x <= rightBounds)
+		{
+			return
+		}
+
+		if (this.ball.x < leftBounds)
+		{
+			// scored on the left side
+			this.incrementRightScore()
+		}
+		else if (this.ball.x > rightBounds)
+		{
+			// scored on the right side
+			this.incrementLeftScore()
+		}
+
+		const maxScore = 7
+		if (this.leftScore >= maxScore)
+		{
+			this.gameState = GameState.PlayerWon
+		}
+		else if (this.rightScore >= maxScore)
+		{
+			this.gameState = GameState.AIWon
+		}
+
+		if (this.gameState === GameState.Running)
+		{
+			this.resetBall()
+		}
+		else
+		{
+			this.ball.active = false
+			this.physics.world.remove(this.ball.body)
+
+			this.scene.stop(GameBackground)
+
+			// show the game over/win screen
+			this.scene.start(GameOver, {
+				leftScore: this.leftScore,
+				rightScore: this.rightScore
+			})
+		}
+	}
+
+	incrementLeftScore()
+	{
+		this.leftScore += 1
+		this.leftScoreLabel.text = this.leftScore
+	}
+
+	incrementRightScore()
+	{
+		this.rightScore += 1
+		this.rightScoreLabel.text = this.rightScore
+	}
+
+	resetBall()
+	{
+		this.ball.setPosition(400, 250)
+
+		const angle = Phaser.Math.Between(0, 360)
+		const vec = this.physics.velocityFromAngle(angle, 300)
+
+		this.ball.body.setVelocity(vec.x, vec.y)
+	}
 }
 
 export default Game
